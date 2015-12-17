@@ -41,10 +41,35 @@ module.exports = (robot) ->
     
 
 imageMe = (robot, msg, query, cb) ->
-    robot.http('http://ajax.googleapis.com/ajax/services/search/images')
-        .query(v: "1.0", rsz: '8', q: query)
-        .get() (err, res, body) ->
-            images = JSON.parse(body)
-            images = images.responseData.results
-            image = msg.random images
-            cb(image)
+    googleCseId = process.env.HUBOT_GOOGLE_CSE_ID
+    googleApiKey = process.env.HUBOT_GOOGLE_CSE_KEY
+    if !googleApiKey 
+       msg.robot.logger.error "Missing environment variable HUBOT_GOOGLE_CSE_KEY" 
+       msg.send "Missing server environment variable HUBOT_GOOGLE_CSE_KEY." 
+       return 
+
+    url = 'https://www.googleapis.com/customsearch/v1' 
+     msg.http(url) 
+       .query(q) 
+       .get() (err, res, body) -> 
+         if err 
+           if res.statusCode is 403 
+             msg.send "Daily image quota exceeded." 
+             cb('http://i.imgur.com/CzFTOkI.png') 
+           else 
+             msg.send "Encountered an error :( #{err}" 
+           return 
+         if res.statusCode isnt 200 
+           msg.send "Bad HTTP response :( #{res.statusCode}" 
+           return 
+         response = JSON.parse(body) 
+         if response?.items 
+           image = msg.random response.items 
+           cb(image.link)
+         else 
+           msg.send "Oops. I had trouble searching '#{query}'. Try later." 
+           ((error) -> 
+             msg.robot.logger.error error.message 
+             msg.robot.logger 
+               .error "(see #{error.extendedHelp})" if error.extendedHelp 
+           ) error for error in response.error.errors if response.error?.errors 
